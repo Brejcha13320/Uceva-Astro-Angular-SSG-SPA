@@ -1,0 +1,23 @@
+<table class="table table-striped border">
+	<thead>
+		<tr>
+			<th scope="col">Id</th>
+      <th scope="col">Producto</th>
+      <th scope="col">Cantidad</th>
+      <th scope="col">Precio</th>
+      <th scope="col">Fecha</th>
+
+		</tr>
+	</thead>
+	<tbody>
+		@for (venta of ventas; track venta) {
+      <tr>
+        <th scope="row">{{ venta.id }}</th>
+        <td>{{ venta.producto }}</td>
+        <td>{{ venta.cantidad }}</td>
+        <td>{{ venta.precio }}</td>
+        <td>{{ venta.fecha }}</td>
+      </tr>
+    }
+	</tbody>
+</table>

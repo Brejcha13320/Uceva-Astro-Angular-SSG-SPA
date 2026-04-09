@@ -1,0 +1,27 @@
+<table class="table table-striped border">
+  <thead>
+    <tr>
+      <th scope="col">Id</th>
+      <th scope="col">Nombre</th>
+      <th scope="col">Ciudad</th>
+      <th scope="col">Teléfono</th>
+      <th scope="col">Categoría</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (distribuidor of distribuidores; track distribuidor) {
+      <tr>
+        <th scope="row">{{ distribuidor.id }}</th>
+        <td>{{ distribuidor.name }}</td>
+        <td>{{ distribuidor.city }}</td>
+        <td>{{ distribuidor.phone }}</td>
+        <td>
+          <dsb-badge-atom
+            [text]="distribuidor.category"
+            [type]="categoryMap[distribuidor.category]" >
+          </dsb-badge-atom>
+        </td>
+
+      </tr>
+    }
+  </tbody>

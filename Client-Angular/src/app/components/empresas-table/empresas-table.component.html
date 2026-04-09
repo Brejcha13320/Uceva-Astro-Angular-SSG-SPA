@@ -1,0 +1,22 @@
+<table class="table table-striped border">
+  <thead>
+    <tr>
+      <th scope="col">Id</th>
+      <th scope="col">Nombre</th>
+      <th scope="col">Sector</th>
+      <th scope="col">Localización</th>
+      <th scope="col">Email</th>
+    </tr>
+  </thead>
+  <tbody>
+    @for (empresa of empresas; track empresa) {
+      <tr>
+        <th scope="row">{{ empresa.id }}</th>
+        <td>{{ empresa.name }}</td>
+        <td>{{ empresa.industry }}</td>
+        <td>{{ empresa.location }}</td>
+        <td>{{ empresa.email }}</td>
+      </tr>
+    }
+  </tbody>
+</table>

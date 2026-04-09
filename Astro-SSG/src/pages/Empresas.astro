@@ -1,0 +1,31 @@
+---
+import { EMPRESAS } from "@data/Empresas";
+import type { Empresa } from "@interfaces/Empresas";
+import MainLayout from "@layouts/MainLayout.astro";
+
+const empresas: Empresa[] = EMPRESAS;
+---
+<MainLayout>
+  <table class="table table-striped border">
+    <thead>
+      <tr>
+        <th scope="col">Id</th>
+        <th scope="col">Nombre</th>
+        <th scope="col">Industria</th>
+        <th scope="col">Ubicación</th>
+        <th scope="col">Email</th>
+      </tr>
+    </thead>
+    <tbody>
+      {empresas.map((empresa) => (
+        <tr>
+          <th scope="row">{empresa.id}</th>
+          <td>{empresa.name}</td>
+          <td>{empresa.industry}</td>
+          <td>{empresa.location}</td>
+          <td>{empresa.email}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</MainLayout>

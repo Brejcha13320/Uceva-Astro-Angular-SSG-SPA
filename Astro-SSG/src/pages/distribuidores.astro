@@ -1,0 +1,42 @@
+---
+import Badge from "@components/shared/Badge.astro";
+import { DISTRIBUIDORES } from "@data/Distribuidores";
+import type { Distribuidor, DistribuidorCategory } from "@interfaces/Distribuidores";
+import type { BadgeType } from "@interfaces/Badge";
+import MainLayout from "@layouts/MainLayout.astro";
+
+const distribuidores: Distribuidor[] = DISTRIBUIDORES;
+
+const categoryMap: Record<DistribuidorCategory, BadgeType> = {
+  'Mayorista': 'primary',
+  'Minorista': 'secondary',
+  'Exportador': 'warning',
+  'Importador': 'danger'
+};
+---
+<MainLayout>
+  <table class="table table-striped border">
+    <thead>
+      <tr>
+        <th scope="col">Id</th>
+        <th scope="col">Nombre</th>
+        <th scope="col">Ciudad</th>
+        <th scope="col">Teléfono</th>
+        <th scope="col">Categoría</th>
+      </tr>
+    </thead>
+    <tbody>
+      {distribuidores.map((d) => (
+        <tr>
+          <th scope="row">{d.id}</th>
+          <td>{d.name}</td>
+          <td>{d.city}</td>
+          <td>{d.phone}</td>
+          <td>
+            <Badge text={d.category} type={categoryMap[d.category]} />
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</MainLayout>
