@@ -2,6 +2,9 @@ import { Routes } from '@angular/router';
 import { DatePage } from './pages/date/date.page';
 import { ProductsPage } from './pages/products/products.page';
 import { UsersPage } from './pages/users/users.page';
+import { Services } from './pages/services/services';
+import { Welfare } from './pages/welfare/welfare';
+import { Contact } from './pages/contact/contact';
 
 /**
  * Definición de las rutas principales de la aplicación.
@@ -46,6 +49,9 @@ export const routes: Routes = [
    * de mostrar la fecha actual del sistema.
    */
   { path: 'date', component: DatePage },
+  { path: 'services', component: Services },
+  { path: 'welfare', component: Welfare },
+  { path: 'contact', component: Contact },
 
   /**
    * Ruta comodín.
