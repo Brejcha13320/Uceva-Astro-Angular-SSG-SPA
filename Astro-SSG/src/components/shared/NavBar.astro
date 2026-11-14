@@ -4,6 +4,9 @@ import Icon  from "@components/shared/Icon.astro";
 import NavLink  from "@components/shared/NavLink.astro";
 
 
+// BASE_URL termina en "/", se normaliza para armar las rutas internas.
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
 const navbarConfig: NavbarConfig = {
     title: 'Astro App',
     iconConfig: {
@@ -11,12 +14,12 @@ const navbarConfig: NavbarConfig = {
       size: 2
     },
     navLinks: [
-      { text: 'Usuarios', url: '/users' },
-      { text: 'Productos', url: '/products' },
-      { text: 'Categorías', url: '/categories' },
-      { text: 'Fecha', url: '/current-date' },
-      { text: 'Clientes', url: '/customers' },
-      { text: 'Pedidos', url: '/orders' },
+      { text: 'Usuarios', url: `${base}/users` },
+      { text: 'Productos', url: `${base}/products` },
+      { text: 'Categorías', url: `${base}/categories` },
+      { text: 'Fecha', url: `${base}/current-date` },
+      { text: 'Clientes', url: `${base}/customers` },
+      { text: 'Pedidos', url: `${base}/orders` },
     ]
 };
 
