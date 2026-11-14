@@ -1,0 +1,257 @@
+name: CI/CD
+
+# Taller de integración y despliegue continuo: compila las dos aplicaciones,
+# las ensambla en un solo sitio y verifica la publicación en GitHub Pages.
+
+on:
+  # La rama por defecto del repositorio es master.
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# Permisos mínimos por defecto; el job de despliegue los amplía.
+permissions:
+  contents: read
+
+# Agrupa las ejecuciones por referencia para no solapar builds de la misma rama.
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build y pruebas
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v7
+
+      # Node 24 cumple los engines de Angular 20 y Astro 5.
+      # cache-dependency-path cubre los dos package-lock.json del repositorio.
+      - name: Configurar Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            Client-Angular/package-lock.json
+            Astro-SSG/package-lock.json
+
+      - name: Instalar dependencias de Client-Angular
+        working-directory: Client-Angular
+        run: npm ci
+
+      - name: Instalar dependencias de Astro-SSG
+        working-directory: Astro-SSG
+        run: npm ci
+
+      # Jest se ejecuta una sola vez; el script no usa modo watch.
+      - name: Ejecutar pruebas de Client-Angular
+        working-directory: Client-Angular
+        run: npm test -- --no-watch
+
+      # La SPA se publica en la raíz del sitio del repositorio.
+      - name: Compilar Client-Angular
+        working-directory: Client-Angular
+        run: npm run build -- --base-href /Taller-4-Astro-Angular-SSG-SPA/
+
+      # El SSG se publica bajo /astro, según el base de astro.config.mjs.
+      - name: Compilar Astro-SSG
+        working-directory: Astro-SSG
+        run: npm run build
+
+      # Ensambla el sitio en _site (solo en el runner, no se versiona):
+      # la SPA en la raíz y el SSG en /astro.
+      - name: Ensamblar el sitio en _site
+        run: |
+          rm -rf _site
+          mkdir -p _site/astro
+          cp -R Client-Angular/dist/Angular-Standalone-Template/browser/. _site/
+          cp -R Astro-SSG/dist/. _site/astro/
+          # Un solo 404.html por sitio: se usa el index de la SPA en la raíz.
+          cp _site/index.html _site/404.html
+
+      - name: Validar artefactos del sitio
+        run: |
+          for archivo in _site/index.html _site/404.html _site/astro/index.html; do
+            if [ ! -f "$archivo" ]; then
+              echo "::error::No se encontró $archivo"
+              exit 1
+            fi
+          done
+
+          if ! grep -q 'base href="/Taller-4-Astro-Angular-SSG-SPA/"' _site/index.html; then
+            echo "::error::El index.html de la SPA no contiene el base href /Taller-4-Astro-Angular-SSG-SPA/"
+            exit 1
+          fi
+
+          if ! grep -q '<app-root' _site/index.html; then
+            echo "::error::El index.html de la SPA no contiene <app-root>"
+            exit 1
+          fi
+
+          if ! grep -q '/Taller-4-Astro-Angular-SSG-SPA/astro/users' _site/astro/index.html; then
+            echo "::error::El index.html de Astro no redirige bajo /Taller-4-Astro-Angular-SSG-SPA/astro/"
+            exit 1
+          fi
+
+      # configure-pages y upload-pages-artifact solo se ejecutan para despliegues
+      # (push o ejecución manual sobre master), nunca en pull_request.
+      - name: Configurar Pages
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
+        uses: actions/configure-pages@v6
+
+      - name: Subir artefacto de Pages
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: Desplegar en GitHub Pages
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Desplegar en GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
+  verify:
+    name: Verificar despliegue
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      # Reintenta la URL base con barra final: GitHub Pages responde 301 sin ella.
+      - name: Verificar la publicación
+        id: verificacion
+        env:
+          URL_BASE: ${{ needs.deploy.outputs.page_url }}
+          INTENTOS_MAX: 10
+          SEGUNDOS_ESPERA: 15
+        run: |
+          URL="${URL_BASE%/}"
+          MAX="${INTENTOS_MAX}"
+          ESPERA="${SEGUNDOS_ESPERA}"
+
+          INTENTO=1
+          CODIGO=000
+          while [ "$INTENTO" -le "$MAX" ]; do
+            CODIGO=$(curl --silent --show-error --output "$RUNNER_TEMP/index-base.html" --write-out "%{http_code}" "$URL/")
+            if [ "$CODIGO" = "200" ]; then
+              break
+            fi
+            INTENTO=$((INTENTO + 1))
+            if [ "$INTENTO" -le "$MAX" ]; then
+              sleep "$ESPERA"
+            fi
+          done
+
+          if [ "$CODIGO" != "200" ]; then
+            echo "::error::La URL base ${URL}/ respondió ${CODIGO} después de $MAX intentos. No se pudo verificar el despliegue."
+            exit 1
+          fi
+
+          if ! grep -q "<app-root" "$RUNNER_TEMP/index-base.html"; then
+            echo "::error::El HTML publicado en ${URL}/ no contiene el marcador <app-root>."
+            exit 1
+          fi
+
+          # Bundle principal de Angular (main-*.js) referenciado por el index.
+          BUNDLE=$(grep -oE 'src="[^"]*main-[^"]*\.js"' "$RUNNER_TEMP/index-base.html" | head -n 1 | sed -e 's/^src="//' -e 's/"$//')
+          BUNDLE="${BUNDLE#/Taller-4-Astro-Angular-SSG-SPA/}"
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::No se detectó el bundle principal de Angular en el HTML publicado."
+            exit 1
+          fi
+
+          BUNDLE_CODE=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" "$URL/$BUNDLE")
+          if [ "$BUNDLE_CODE" != "200" ]; then
+            echo "::error::El bundle ${BUNDLE} respondió ${BUNDLE_CODE}, se esperaba 200."
+            exit 1
+          fi
+
+          # Ruta profunda real de la SPA: Pages responde 404 con el 404.html,
+          # pero el cuerpo debe traer el index de Angular (<app-root>).
+          RUTA_CODE=$(curl --silent --show-error --output "$RUNNER_TEMP/index-orders.html" --write-out "%{http_code}" "$URL/orders")
+          RUTA_OK="false"
+          if grep -q "<app-root" "$RUNNER_TEMP/index-orders.html"; then
+            RUTA_OK="true"
+          fi
+
+          # El SSG vive en /astro: su index es una redirección estática a /astro/users.
+          ASTRO_CODE=$(curl --silent --show-error --output "$RUNNER_TEMP/astro-index.html" --write-out "%{http_code}" "$URL/astro/")
+          ASTRO_MARKER="false"
+          if grep -q "Redirecting to:" "$RUNNER_TEMP/astro-index.html"; then
+            ASTRO_MARKER="true"
+          fi
+          ASTRO_BASE_OK="false"
+          if grep -q "/Taller-4-Astro-Angular-SSG-SPA/astro/users" "$RUNNER_TEMP/astro-index.html"; then
+            ASTRO_BASE_OK="true"
+          fi
+
+          # Página real de Astro y asset referenciado, para comprobar que el path
+          # se arma bajo /astro/.
+          ASTRO_USERS_CODE=$(curl --silent --show-error --output "$RUNNER_TEMP/astro-users.html" --write-out "%{http_code}" "$URL/astro/users/")
+          ASTRO_TITLE="false"
+          if grep -q "<title>Astro Basics</title>" "$RUNNER_TEMP/astro-users.html"; then
+            ASTRO_TITLE="true"
+          fi
+
+          ASTRO_ASSET=$(grep -oE 'href="[^"]*_astro/[^"]+\.css"' "$RUNNER_TEMP/astro-users.html" | head -n 1 | sed -e 's/^href="//' -e 's/"$//')
+          ASTRO_ASSET="${ASTRO_ASSET#/Taller-4-Astro-Angular-SSG-SPA/}"
+          ASTRO_ASSET_CODE=000
+          ASTRO_ASSET_OK="false"
+          if [ -n "$ASTRO_ASSET" ] && echo "$ASTRO_ASSET" | grep -q "^astro/"; then
+            ASTRO_ASSET_CODE=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" "$URL/$ASTRO_ASSET")
+            if [ "$ASTRO_ASSET_CODE" = "200" ]; then
+              ASTRO_ASSET_OK="true"
+            fi
+          fi
+
+          {
+            echo "### Verificación del despliegue en GitHub Pages"
+            echo ""
+            echo "- URL publicada: \`${URL}/\`"
+            echo "- URL base: respuesta HTTP ${CODIGO}; contiene \`<app-root\`: OK"
+            echo "- Bundle principal (\`${BUNDLE}\`): respuesta HTTP ${BUNDLE_CODE}; esperado 200: OK"
+            echo "- Ruta profunda /orders: respuesta HTTP ${RUTA_CODE}; contiene \`<app-root\`: ${RUTA_OK}"
+            echo "- SSG \`/astro/\`: respuesta HTTP ${ASTRO_CODE}; marcador de redirección de Astro: ${ASTRO_MARKER}; redirección bajo /astro/: ${ASTRO_BASE_OK}"
+            echo "- SSG \`/astro/users/\`: respuesta HTTP ${ASTRO_USERS_CODE}; título \`Astro Basics\`: ${ASTRO_TITLE}"
+            echo "- Asset de Astro (\`${ASTRO_ASSET}\`): respuesta HTTP ${ASTRO_ASSET_CODE}; esperado 200: ${ASTRO_ASSET_OK}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$RUTA_OK" != "true" ]; then
+            echo "::error::La ruta /orders no devolvió el marcador <app-root>; el truco del 404.html no se aplicó como se esperaba."
+            exit 1
+          fi
+
+          if [ "$ASTRO_CODE" != "200" ] || [ "$ASTRO_MARKER" != "true" ] || [ "$ASTRO_BASE_OK" != "true" ]; then
+            echo "::error::La URL ${URL}/astro/ respondió ${ASTRO_CODE}, no contiene el marcador de Astro o no redirige bajo /astro/."
+            exit 1
+          fi
+
+          if [ "$ASTRO_USERS_CODE" != "200" ] || [ "$ASTRO_TITLE" != "true" ]; then
+            echo "::error::La página ${URL}/astro/users/ respondió ${ASTRO_USERS_CODE} o no contiene el título esperado."
+            exit 1
+          fi
+
+          if [ "$ASTRO_ASSET_OK" != "true" ]; then
+            echo "::error::El asset ${ASTRO_ASSET} de Astro respondió ${ASTRO_ASSET_CODE}, se esperaba 200 bajo /astro/."
+            exit 1
+          fi
